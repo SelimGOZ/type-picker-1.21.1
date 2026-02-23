@@ -22,8 +22,9 @@
 			"net.fortuneblack05.typerando.TypePickerDataGenerator"
 		],
 		"client": [
-			"net.fortuneblack05.typerando.TypePickerClient"
-		]
+			"net.fortuneblack05.typerando.Client.TypePickerClient"
+		],
+		"server": ["net.fortuneblack05.typerando.Server.TypePickerServer"]
 	},
 	"mixins": [
 		"type-picker.mixins.json"
