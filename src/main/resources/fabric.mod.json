@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "type-picker",
+	"version": "${version}",
+	"name": "Type Picker",
+	"description": "Randomize your Pokemon Type",
+	"authors": [
+		"FortuneBlack05"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "MIT",
+	"icon": "assets/type-picker/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.fortuneblack05.typerando.TypePicker"
+		],
+		"fabric-datagen": [
+			"net.fortuneblack05.typerando.TypePickerDataGenerator"
+		],
+		"client": [
+			"net.fortuneblack05.typerando.TypePickerClient"
+		]
+	},
+	"mixins": [
+		"type-picker.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
