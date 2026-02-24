@@ -1,6 +1,9 @@
 name: Gradle Package & Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       tag:
@@ -13,7 +16,6 @@ on:
         description: 'Is this a prerelease?'
         default: false
         type: boolean
-
   release:
     types: [created]
 
@@ -42,6 +44,13 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew clean build
 
+      - name: Upload Commit Artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TypeRando-Commit-${{ github.sha }}
+          path: build/libs/*.jar
+
       - name: Create GitHub Release
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
@@ -52,7 +61,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
       - name: Upload Mod .jar to Release
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
@@ -61,7 +69,6 @@ jobs:
           files: build/libs/*.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
       - name: Upload Mod .jar to Release (auto)
         if: github.event_name == 'release'
