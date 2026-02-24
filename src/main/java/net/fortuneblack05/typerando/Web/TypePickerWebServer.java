@@ -16,6 +16,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.UUID;
 
 public class TypePickerWebServer {
     private static HttpServer server;
@@ -52,7 +53,6 @@ public class TypePickerWebServer {
                     Optional<Types> currentType = TypePicker.MANAGER.getRole(player.getUuid());
                     pObj.addProperty("currentType", currentType.map(t -> t.displayName).orElse("None"));
 
-                    // Add current weights and blacklists
                     JsonObject weightsObj = new JsonObject();
                     JsonObject blacklistsObj = new JsonObject();
                     for (int i = 1; i <= 18; i++) {
@@ -78,7 +78,7 @@ public class TypePickerWebServer {
                         String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                         JsonObject data = GSON.fromJson(body, JsonObject.class);
 
-                        String uuid = data.get("uuid").getAsString();
+                        String uuidStr = data.get("uuid").getAsString();
                         JsonArray types = data.getAsJsonArray("types");
 
                         for (JsonElement el : types) {
@@ -87,16 +87,36 @@ public class TypePickerWebServer {
                             double weight = t.get("weight").getAsDouble();
                             boolean blacklist = t.get("blacklist").getAsBoolean();
 
-                            TypePicker.MANAGER.setWeight(uuid, id, weight);
-                            TypePicker.MANAGER.setBlacklist(uuid, id, blacklist);
+                            TypePicker.MANAGER.setWeight(uuidStr, id, weight);
+                            TypePicker.MANAGER.setBlacklist(uuidStr, id, blacklist);
                         }
+
+                        // Save the data to the JSON file
                         TypePicker.MANAGER.save(mcServer);
+
+                        // --- NEW: Instantly sync the TAB list if the player is currently online ---
+                        try {
+                            UUID parsedUuid = UUID.fromString(uuidStr);
+                            ServerPlayerEntity target = mcServer.getPlayerManager().getPlayer(parsedUuid);
+                            if (target != null) {
+                                TypePicker.MANAGER.syncPlayerTab(target);
+                            }
+                        } catch (Exception ignored) {
+                            // Failsafe in case the UUID string format is weird
+                        }
+                        // --------------------------------------------------------------------------
 
                         String response = "{\"status\":\"success\"}";
                         exchange.getResponseHeaders().set("Content-Type", "application/json");
                         exchange.sendResponseHeaders(200, response.length());
                         try (OutputStream os = exchange.getResponseBody()) { os.write(response.getBytes()); }
+                    } catch (Exception e) {
+                        String error = "{\"status\":\"error\", \"message\":\"" + e.getMessage() + "\"}";
+                        exchange.sendResponseHeaders(500, error.length());
+                        try (OutputStream os = exchange.getResponseBody()) { os.write(error.getBytes()); }
                     }
+                } else {
+                    exchange.sendResponseHeaders(405, -1);
                 }
             });
 
@@ -117,7 +137,7 @@ public class TypePickerWebServer {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>TypeRando</title>
+            <title>TypeRando - Live Dashboard</title>
             <style>
                 :root { --neon: #ff5e00; --bg: #0a0a0a; --panel: #141414; }
                 body { background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
@@ -132,7 +152,6 @@ public class TypePickerWebServer {
                 .card-info p { margin: 0; font-size: 0.85em; color: #aaa; }
                 .card-info .type-badge { display: inline-block; margin-top: 8px; padding: 3px 8px; background: #333; border: 1px solid var(--neon); border-radius: 4px; color: var(--neon); font-size: 0.8em; font-weight: bold; }
 
-                /* Modal styling */
                 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
                 .modal-overlay.open { display: flex; opacity: 1; }
                 .modal-content { background: var(--panel); border: 2px solid var(--neon); box-shadow: 0 0 30px rgba(255, 94, 0, 0.4); padding: 25px; border-radius: 15px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; transform: scale(0.8); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; }
@@ -153,14 +172,13 @@ public class TypePickerWebServer {
                 button.save-btn { width: 100%; background: var(--neon); color: #000; border: none; padding: 15px; font-size: 1.1em; font-weight: bold; border-radius: 8px; margin-top: 20px; cursor: pointer; transition: all 0.2s; }
                 button.save-btn:hover { background: #ff7b33; box-shadow: 0 0 15px var(--neon); }
                 
-                /* Scrollbar */
                 ::-webkit-scrollbar { width: 8px; }
                 ::-webkit-scrollbar-track { background: var(--bg); }
                 ::-webkit-scrollbar-thumb { background: var(--neon); border-radius: 4px; }
             </style>
         </head>
         <body>
-            <h1>TYPERANDO</h1>
+            <h1>TYPERANDO LIVE NETWORK</h1>
             <div class="grid" id="player-grid">Loading players...</div>
 
             <div class="modal-overlay" id="modal" onclick="closeModal(event)">
@@ -180,37 +198,38 @@ public class TypePickerWebServer {
                 const TYPE_NAMES = ["Normal","Fire","Water","Electric","Grass","Ice","Fighting","Poison","Ground","Flying","Psychic","Bug","Rock","Ghost","Dragon","Dark","Steel","Fairy"];
                 let currentPlayerId = null;
 
-                // 1. Fetch online players on load
-                fetch('/api/players')
-                    .then(res => res.json())
-                    .then(players => {
-                        const grid = document.getElementById('player-grid');
-                        grid.innerHTML = '';
-                        if (players.length === 0) {
-                            grid.innerHTML = '<p style="color:#aaa;">No players currently online.</p>';
-                            return;
-                        }
+                function loadPlayers() {
+                    fetch('/api/players')
+                        .then(res => res.json())
+                        .then(players => {
+                            const grid = document.getElementById('player-grid');
+                            grid.innerHTML = '';
+                            if (players.length === 0) {
+                                grid.innerHTML = '<p style="color:#aaa;">No players currently online.</p>';
+                                return;
+                            }
 
-                        players.forEach(p => {
-                            // Fetch skin head using Minotar/Crafatar API
-                            const headUrl = `https://crafatar.com/avatars/${p.uuid}?overlay=true`;
-                            
-                            const card = document.createElement('div');
-                            card.className = 'card';
-                            card.innerHTML = `
-                                <img src="${headUrl}" alt="${p.name}'s Head" onerror="this.src='https://crafatar.com/avatars/8667ba71b85a4004af54457a9734eed7'">
-                                <div class="card-info">
-                                    <h3>${p.name}</h3>
-                                    <p>${p.uuid.split('-')[0]}...</p>
-                                    <span class="type-badge">Type: ${p.currentType}</span>
-                                </div>
-                            `;
-                            card.onclick = () => openModal(p);
-                            grid.appendChild(card);
-                        });
-                    });
+                            players.forEach(p => {
+                                const headUrl = `https://crafatar.com/avatars/${p.uuid}?overlay=true`;
+                                const card = document.createElement('div');
+                                card.className = 'card';
+                                card.innerHTML = `
+                                    <img src="${headUrl}" alt="${p.name}'s Head" onerror="this.src='https://crafatar.com/avatars/8667ba71b85a4004af54457a9734eed7'">
+                                    <div class="card-info">
+                                        <h3>${p.name}</h3>
+                                        <p>${p.uuid.split('-')[0]}...</p>
+                                        <span class="type-badge">Type: ${p.currentType}</span>
+                                    </div>
+                                `;
+                                card.onclick = () => openModal(p);
+                                grid.appendChild(card);
+                            });
+                        })
+                        .catch(err => console.error("Failed to load players", err));
+                }
 
-                // 2. Open the Zoom-In Modal
+                loadPlayers();
+
                 function openModal(player) {
                     currentPlayerId = player.uuid;
                     document.getElementById('modal-name').innerText = player.name + " Configuration";
@@ -218,7 +237,6 @@ public class TypePickerWebServer {
                     const list = document.getElementById('types-list');
                     list.innerHTML = '';
 
-                    // Generate 18 rows
                     for (let i = 1; i <= 18; i++) {
                         const typeName = TYPE_NAMES[i - 1];
                         const currentWeight = player.weights[i] || 1.0;
@@ -248,7 +266,6 @@ public class TypePickerWebServer {
                     }
                 }
 
-                // 3. Save Changes
                 function saveSettings() {
                     const typesData = [];
                     for (let i = 1; i <= 18; i++) {
@@ -268,9 +285,20 @@ public class TypePickerWebServer {
                     }).then(res => res.json())
                       .then(json => {
                           const status = document.getElementById('status');
-                          status.innerText = "DATA UPLOADED SUCCESSFULLY!";
-                          status.style.color = "lightgreen";
-                          setTimeout(() => { status.innerText = ""; document.getElementById('modal').classList.remove('open'); }, 1500);
+                          if(json.status === 'success') {
+                              status.innerText = "DATA UPLOADED SUCCESSFULLY!";
+                              status.style.color = "lightgreen";
+                              
+                              loadPlayers(); 
+                              
+                              setTimeout(() => { 
+                                  status.innerText = ""; 
+                                  document.getElementById('modal').classList.remove('open'); 
+                              }, 1500);
+                          } else {
+                              status.innerText = "Error: " + json.message;
+                              status.style.color = "red";
+                          }
                       })
                       .catch(err => {
                           document.getElementById('status').innerText = "CONNECTION ERROR.";
