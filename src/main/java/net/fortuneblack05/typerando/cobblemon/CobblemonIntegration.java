@@ -7,6 +7,7 @@ import com.cobblemon.mod.common.pokemon.Pokemon;
 import kotlin.Unit;
 import net.fortuneblack05.typerando.TypePicker;
 import net.fortuneblack05.typerando.Types;
+import net.fortuneblack05.typerando.item.TypePickerItems;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
@@ -71,8 +72,12 @@ public class CobblemonIntegration {
 
     // Helper method to safely compare strings like "cobblemon:fire" with "Fire"
     private static boolean isMatchingType(Pokemon pokemon, Types assignedType) {
-        String allowed = assignedType.displayName.toLowerCase();
+        if (pokemon.heldItem().isOf(TypePickerItems.FAKE_TYPE_SHARD)) {
+            return true;
+        }
+        // ---------------------------------------
 
+        String allowed = assignedType.displayName.toLowerCase();
         String type1 = pokemon.getPrimaryType().getName().toLowerCase();
         String type2 = pokemon.getSecondaryType() != null ? pokemon.getSecondaryType().getName().toLowerCase() : "";
 
