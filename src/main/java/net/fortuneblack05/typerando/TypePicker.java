@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fortuneblack05.typerando.Web.TypePickerWebServer;
+import net.fortuneblack05.typerando.cobblemon.CobblemonIntegration;
 import net.fortuneblack05.typerando.commands.TypePickerCommands;
 
 public class TypePicker implements ModInitializer {
@@ -21,9 +22,9 @@ public class TypePicker implements ModInitializer {
 			TypePickerWebServer.start(server); // <-- Starts the Web Server
 		});
 
-		ServerTickEvents.END_SERVER_TICK.register(server -> {
-			MANAGER.tickSpins(server);
-		});	
+		CobblemonIntegration.register();
+
+		ServerTickEvents.END_SERVER_TICK.register(MANAGER::tickSpins);
 
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			MANAGER.save(server);
